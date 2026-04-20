@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS SENTINEL // ACTIVE</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg:#050808; --pbg:#070c07; --grn:#00ff41; --g2:#00cc33;
+  --gd:#004a10; --gdx:#0a1f0a; --amb:#ffb300; --red:#ff2222;
+  --cyn:#00eeff; --mgn:#dd88ff;
+}
+html,body { width:100%; height:100%; background:var(--bg); color:var(--grn); font-family:'Share Tech Mono','Courier New',monospace; font-size:12px; overflow:hidden; }
+body::after { content:''; position:fixed; inset:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px); pointer-events:none; z-index:9999; }
+#hdr { height:28px; border-bottom:1px solid var(--gdx); display:flex; align-items:center; padding:0 12px; gap:20px; background:#040808; flex-shrink:0; }
+.ht { font-size:13px; letter-spacing:3px; text-shadow:0 0 12px var(--grn); }
+.hs { font-size:10px; color:var(--g2); }
+.hs em { color:var(--amb); font-style:normal; }
+.blink { animation:blink .9s step-end infinite; }
+@keyframes blink { 50%{opacity:0} }
+#grid { display:grid; grid-template-columns:1fr 1fr 1fr; grid-template-rows:1fr 1fr; gap:1px; height:calc(100vh - 28px); background:var(--gdx); }
+.pnl { background:var(--pbg); overflow:hidden; display:flex; flex-direction:column; }
+.ph { height:22px; flex-shrink:0; border-bottom:1px solid var(--gdx); padding:0 8px; font-size:10px; letter-spacing:2px; color:var(--g2); display:flex; align-items:center; gap:8px; background:#040808; }
+.ph .dot { width:5px; height:5px; border-radius:50%; background:var(--grn); box-shadow:0 0 5px var(--grn); }
+.pb { flex:1; overflow:hidden; position:relative; }
+
+/* P1 packet */
+#nl { height:100%; overflow:hidden; font-size:10px; line-height:1.5; }
+.pk{display:flex;gap:5px}
+.pk-t{color:#006614;width:52px;flex-shrink:0}
+.pk-p{width:34px;flex-shrink:0}
+.pk-p.tcp{color:var(--grn)} .pk-p.udp{color:var(--cyn)} .pk-p.tls{color:var(--mgn)} .pk-p.icmp{color:var(--amb)}
+.pk-s{color:#009926;flex:1;overflow:hidden;white-space:nowrap}
+.pk-d{color:#006e1c;flex:1;overflow:hidden;white-space:nowrap}
+.pk-b{color:#004a10;width:40px;text-align:right;flex-shrink:0}
+.pk-i{color:#003d0c;flex:2;overflow:hidden;white-space:nowrap}
+
+/* P3 terminal */
+#tb { height:100%; overflow:hidden; font-size:11px; line-height:1.6; }
+.to{color:#009922} .tc{color:var(--grn)} .te{color:var(--red)} .ti{color:var(--cyn)}
+
+/* P4 radar */
+#tlog { font-size:10px; line-height:1.5; overflow:hidden; }
+.thr{display:flex;gap:6px}
+.thr-t{color:#006614;width:52px;flex-shrink:0}
+.thr-l{width:48px;flex-shrink:0}
+.thr-l.i{color:var(--cyn)} .thr-l.w{color:var(--amb)} .thr-l.c{color:var(--red);text-shadow:0 0 5px var(--red)}
+.thr-m{color:#009922;flex:1;overflow:hidden;white-space:nowrap}
+
+/* P5 hex dump */
+#hxw { height:100%; overflow:hidden; font-size:10px; line-height:1.55; padding:4px 6px; }
+.hxr { display:flex; gap:8px; }
+.hxr-off { color:#003d0c; width:42px; flex-shrink:0; }
+.hxr-hex { color:#00aa22; flex:1; letter-spacing:1.5px; white-space:nowrap; overflow:hidden; }
+.hxr-asc { color:#005512; width:90px; flex-shrink:0; overflow:hidden; white-space:nowrap; letter-spacing:.5px; }
+.hx-head { color:#004a10; font-size:9px; border-bottom:1px solid var(--gdx); padding-bottom:2px; margin-bottom:3px; display:flex; gap:8px; }
+.hx-label { color:#004a10; font-size:9px; margin-bottom:2px; }
+
+/* P6 bandwidth */
+#bwc { display:block; }
+#bwstats { font-size:10px; padding:4px 8px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; flex-shrink:0; }
+.bwst { background:#040d04; padding:4px 6px; }
+.bwst-l { color:#004a10; font-size:9px; }
+.bwst-v { font-size:13px; font-weight:bold; }
+.bwst-v.rx { color:var(--grn); }
+.bwst-v.tx { color:var(--cyn); }
+.bwst-v.tot { color:var(--amb); }
+
+#map-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--g2); letter-spacing:2px; pointer-events:none; }
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <span class="ht">◈ NEXUS SENTINEL</span>
+  <span class="hs">NODE: <em>nx-alpha-07</em></span>
+  <span class="hs">PKTS: <em id="hpkt">0</em></span>
+  <span class="hs">THREATS: <em id="hthr" style="color:var(--red)">0</em></span>
+  <span class="hs">UPTIME: <em id="hup">00:00:00</em></span>
+  <span class="hs" style="margin-left:auto">ENC: <em>AES-256-GCM</em></span>
+  <span class="hs blink" style="color:var(--amb)">● LIVE</span>
+</div>
+
+<div id="grid">
+
+  <!-- TOP-LEFT: Packet sniffer -->
+  <div class="pnl">
+    <div class="ph"><div class="dot blink"></div>PACKET INTERCEPTOR // LIVE FEED</div>
+    <div class="pb" style="padding:4px;display:flex;flex-direction:column">
+      <div style="display:flex;gap:5px;color:#003d0c;font-size:9px;border-bottom:1px solid var(--gdx);padding-bottom:2px;margin-bottom:2px;flex-shrink:0">
+        <span style="width:52px">TIME</span><span style="width:34px">PROTO</span>
+        <span style="flex:1">SRC</span><span style="flex:1">DST</span>
+        <span style="width:40px;text-align:right">BYTES</span><span style="flex:2">INFO</span>
+      </div>
+      <div id="nl" style="flex:1;overflow:hidden"></div>
+    </div>
+  </div>
+
+  <!-- TOP-CENTER: World map -->
+  <div class="pnl">
+    <div class="ph"><div class="dot blink" style="animation-delay:.4s"></div>GLOBAL TOPOLOGY // TRACEROUTE MATRIX</div>
+    <div class="pb" style="padding:0;position:relative">
+      <canvas id="mc"></canvas>
+      <div id="map-loading">LOADING GEODATA...</div>
+    </div>
+  </div>
+
+  <!-- TOP-RIGHT: Hex dump -->
+  <div class="pnl">
+    <div class="ph"><div class="dot blink" style="animation-delay:.8s"></div>PAYLOAD ANALYZER // HEX DUMP</div>
+    <div class="pb">
+      <div id="hxw">
+        <div class="hx-head">
+          <span style="width:42px">OFFSET</span>
+          <span style="flex:1">00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F</span>
+          <span style="width:90px">ASCII</span>
+        </div>
+        <div id="hxlines"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM-LEFT: Terminal -->
+  <div class="pnl">
+    <div class="ph"><div class="dot blink" style="animation-delay:1.2s"></div>OPERATIVE SHELL // root@nexus-07</div>
+    <div class="pb" style="padding:4px 6px">
+      <div id="tb"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM-CENTER: Bandwidth -->
+  <div class="pnl">
+    <div class="ph"><div class="dot blink" style="animation-delay:1.6s"></div>BANDWIDTH MONITOR // REALTIME I/O</div>
+    <div class="pb" style="display:flex;flex-direction:column">
+      <div id="bwstats">
+        <div class="bwst"><div class="bwst-l">RX RATE</div><div class="bwst-v rx" id="brx">0.0 MB/s</div></div>
+        <div class="bwst"><div class="bwst-l">TX RATE</div><div class="bwst-v tx" id="btx">0.0 MB/s</div></div>
+        <div class="bwst"><div class="bwst-l">TOTAL TODAY</div><div class="bwst-v tot" id="btot">0.0 GB</div></div>
+      </div>
+      <div style="flex:1;position:relative;padding:2px 0">
+        <canvas id="bwc"></canvas>
+        <div style="position:absolute;bottom:4px;right:8px;font-size:9px;display:flex;gap:10px">
+          <span style="color:var(--grn)">▬ RX</span>
+          <span style="color:var(--cyn)">▬ TX</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM-RIGHT: Radar -->
+  <div class="pnl">
+    <div class="ph"><div class="dot blink" style="animation-delay:2.0s"></div>NEURAL IDS // THREAT RADAR v3.1</div>
+    <div class="pb" style="padding:4px;display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;justify-content:center;flex-shrink:0;padding:2px 0"><canvas id="rc"></canvas></div>
+      <div style="color:#003d0c;font-size:9px;border-bottom:1px solid var(--gdx);padding-bottom:2px;margin-bottom:2px;display:flex;gap:6px;flex-shrink:0">
+        <span style="width:52px">TIME</span><span style="width:48px">LEVEL</span><span style="flex:1">EVENT</span>
+      </div>
+      <div id="tlog" style="flex:1;overflow:hidden"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const rand = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
+const rf = (a,b) => Math.random()*(b-a)+a;
+const pick = a => a[rand(0,a.length-1)];
+const sleep = ms => new Promise(r => setTimeout(r,ms));
+const pad = n => String(n).padStart(2,'0');
+const h2 = n => n.toString(16).toUpperCase().padStart(2,'0');
+const ts = () => { const n=new Date(); return `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`; };
+
+let upSec=0, totPkt=0, totThr=0;
+setInterval(()=>{ upSec++; $('hup').textContent=`${pad(~~(upSec/3600))}:${pad(~~(upSec/60)%60)}:${pad(upSec%60)}`; },1000);
+
+// ═══ P1 — PACKET INTERCEPTOR ════════════════════════════════
+const PROTOS=[['TCP','tcp'],['UDP','udp'],['TLS','tls'],['ICMP','icmp'],['DNS','udp'],['SSH','tls'],['HTTPS','tls'],['HTTP','tcp']];
+const PINFO={TCP:['SYN','SYN-ACK','ACK','PSH ACK','FIN ACK','RST'],UDP:['len=','broadcast','multicast','fragment'],TLS:['ClientHello','ServerHello','AppData','Certificate','CCS'],ICMP:['Echo Request','Echo Reply','TTL exceeded','Unreachable'],DNS:['Query A','Query AAAA','Response PTR','Response MX'],SSH:['Key Exchange','New Keys','Service Req','Userauth'],HTTPS:['GET /','TLS1.3','ALPN h2','SNI ext'],HTTP:['GET /','POST /api','HEAD /','OPTIONS *']};
+const KNOWNS=['104.26.14.5','185.93.1.22','192.168.1.254','10.0.0.1','8.8.8.8','1.1.1.1','172.217.16.46'];
+const rip=()=>`${rand(1,254)}.${rand(0,255)}.${rand(0,255)}.${rand(1,254)}`;
+const nl=$('nl');
+function addPkt(){
+  const[p,c]=pick(PROTOS);
+  const src=`${rand(0,1)?pick(KNOWNS):rip()}:${rand(1024,65535)}`;
+  const dst=`${rip()}:${rand(1,65535)}`;
+  const sz=rand(40,1500);
+  const info=pick(PINFO[p]||PINFO.TCP)+(rand(0,1)?rand(100,99999):'');
+  const div=document.createElement('div'); div.className='pk';
+  div.innerHTML=`<span class="pk-t">${ts()}</span><span class="pk-p ${c}">${p}</span><span class="pk-s">${src}</span><span class="pk-d">${dst}</span><span class="pk-b">${sz}B</span><span class="pk-i">${info}</span>`;
+  nl.appendChild(div);
+  while(nl.children.length>30)nl.removeChild(nl.firstChild);
+  totPkt++; $('hpkt').textContent=totPkt.toLocaleString();
+}
+(function pktLoop(){ addPkt(); setTimeout(pktLoop,rand(70,180)); })();
+
+// ═══ P2 — WORLD MAP ══════════════════════════════════════════
+const mc=$('mc'), mctx=mc.getContext('2d');
+function resizeMc(){ const p=mc.parentElement; mc.width=p.clientWidth; mc.height=p.clientHeight; }
+resizeMc();
+let projection=null, landGeo=null, bordersGeo=null;
+function setupProjection(){ if(!mc.width||!mc.height) return; projection=d3.geoNaturalEarth1().fitExtent([[4,4],[mc.width-4,mc.height-4]],{type:'Sphere'}); }
+function ll2xy(lon,lat){ if(projection){ const pt=projection([lon,lat]); return pt||[(lon+180)/360*mc.width,(90-lat)/180*mc.height]; } return [(lon+180)/360*mc.width,(90-lat)/180*mc.height]; }
+fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r=>r.json()).then(w=>{
+  landGeo=topojson.feature(w,w.objects.land);
+  bordersGeo=topojson.mesh(w,w.objects.countries,(a,b)=>a!==b);
+  setupProjection();
+  const el=$('map-loading'); if(el)el.style.display='none';
+}).catch(()=>{ const el=$('map-loading'); if(el)el.textContent='GEODATA UNAVAILABLE'; });
+
+const CITIES=[{n:'New York',lon:-74,lat:40.7},{n:'London',lon:-.1,lat:51.5},{n:'Tokyo',lon:139.7,lat:35.7},{n:'Moscow',lon:37.6,lat:55.7},{n:'Beijing',lon:116.4,lat:39.9},{n:'Sydney',lon:151.2,lat:-33.9},{n:'São Paulo',lon:-46.6,lat:-23.5},{n:'Dubai',lon:55.3,lat:25.2},{n:'Singapore',lon:103.8,lat:1.3},{n:'Frankfurt',lon:8.7,lat:50.1},{n:'Chicago',lon:-87.6,lat:41.9},{n:'LA',lon:-118.2,lat:34.1},{n:'Seoul',lon:126.9,lat:37.6},{n:'Mumbai',lon:72.8,lat:19.1},{n:'Cairo',lon:31.2,lat:30.1},{n:'Nairobi',lon:36.8,lat:-1.3},{n:'Toronto',lon:-79.4,lat:43.7}];
+let arcs=[];
+function newArc(){
+  let s=pick(CITIES),d; do{d=pick(CITIES);}while(d===s);
+  arcs.push({s,d,p:0,sp:rf(.004,.013),col:pick(['#00ff41','#00eeff','#ffb300','#ff4444','#dd88ff']),tr:[]});
+  if(arcs.length>7)arcs.shift();
+}
+function hopArc(a){
+  const prev=a.d;
+  let next; do{next=pick(CITIES);}while(next===prev);
+  a.s=prev; a.d=next; a.p=0; a.tr=[]; a.sp=rf(.004,.013);
+  if(Math.random()<.35) a.col=pick(['#00ff41','#00eeff','#ffb300','#ff4444','#dd88ff']);
+}
+for(let i=0;i<3;i++)newArc(); setInterval(newArc,4500);
+function drawMap(){
+  const w=mc.width,h=mc.height;
+  mctx.fillStyle='#030a03'; mctx.fillRect(0,0,w,h);
+  mctx.strokeStyle='#091409'; mctx.lineWidth=.5;
+  for(let x=0;x<w;x+=w/10){mctx.beginPath();mctx.moveTo(x,0);mctx.lineTo(x,h);mctx.stroke();}
+  for(let y=0;y<h;y+=h/5){mctx.beginPath();mctx.moveTo(0,y);mctx.lineTo(w,y);mctx.stroke();}
+  if(landGeo&&projection){
+    const path=d3.geoPath().projection(projection).context(mctx);
+    mctx.beginPath(); path({type:'Sphere'}); mctx.strokeStyle='#0a2a0a'; mctx.lineWidth=1; mctx.stroke();
+    const gr=d3.geoGraticule().step([30,30])();
+    mctx.beginPath(); path(gr); mctx.strokeStyle='#091409'; mctx.lineWidth=.4; mctx.stroke();
+    mctx.beginPath(); path(landGeo); mctx.fillStyle='#0a2010'; mctx.fill();
+    mctx.beginPath(); path(bordersGeo); mctx.strokeStyle='#1a5520'; mctx.lineWidth=.4; mctx.stroke();
+    mctx.beginPath(); path(landGeo); mctx.strokeStyle='#00aa22'; mctx.lineWidth=.5; mctx.stroke();
+  }
+  arcs.forEach(a=>{
+    const spt=ll2xy(a.s.lon,a.s.lat),dpt=ll2xy(a.d.lon,a.d.lat);
+    if(!spt||!dpt)return;
+    const[sx,sy]=spt,[dx,dy]=dpt;
+    const mx=(sx+dx)/2,my=Math.min(sy,dy)-Math.abs(dx-sx)*.32;
+    mctx.beginPath(); mctx.moveTo(sx,sy); mctx.quadraticCurveTo(mx,my,dx,dy);
+    mctx.strokeStyle=a.col+'20'; mctx.lineWidth=.8; mctx.stroke();
+    const t=a.p;
+    const px=(1-t)*(1-t)*sx+2*(1-t)*t*mx+t*t*dx;
+    const py=(1-t)*(1-t)*sy+2*(1-t)*t*my+t*t*dy;
+    a.tr.push([px,py]); if(a.tr.length>20)a.tr.shift();
+    for(let i=1;i<a.tr.length;i++){
+      const al=i/a.tr.length;
+      mctx.beginPath(); mctx.moveTo(a.tr[i-1][0],a.tr[i-1][1]); mctx.lineTo(a.tr[i][0],a.tr[i][1]);
+      mctx.strokeStyle=a.col+Math.floor(al*200).toString(16).padStart(2,'0');
+      mctx.lineWidth=1.5; mctx.stroke();
+    }
+    const g=mctx.createRadialGradient(px,py,0,px,py,7);
+    g.addColorStop(0,a.col); g.addColorStop(1,'transparent');
+    mctx.beginPath(); mctx.arc(px,py,7,0,Math.PI*2); mctx.fillStyle=g; mctx.fill();
+    mctx.beginPath(); mctx.arc(px,py,2,0,Math.PI*2); mctx.fillStyle=a.col; mctx.fill();
+    a.p+=a.sp; if(a.p>1)hopArc(a);
+  });
+  const now=Date.now()/1000;
+  CITIES.forEach(c=>{
+    const pt=ll2xy(c.lon,c.lat); if(!pt)return;
+    const[x,y]=pt;
+    const pulse=(Math.sin(now*2+x*.05)+1)/2;
+    mctx.beginPath(); mctx.arc(x,y,3+pulse*5,0,Math.PI*2);
+    mctx.strokeStyle=`rgba(0,255,65,${.3-pulse*.28})`; mctx.lineWidth=1; mctx.stroke();
+    mctx.beginPath(); mctx.arc(x,y,2.5,0,Math.PI*2); mctx.fillStyle='#00ff41'; mctx.fill();
+    mctx.fillStyle='#006620'; mctx.font='7px Share Tech Mono,monospace'; mctx.fillText(c.n,x+4,y-2);
+  });
+}
+(function mapLoop(){ drawMap(); requestAnimationFrame(mapLoop); })();
+
+// ═══ P3 — TERMINAL ═══════════════════════════════════════════
+const tb=$('tb');
+const CMDS=[
+  {cmd:'nmap -sS -O --osscan-guess 10.0.0.0/24',out:['Starting Nmap 7.94','Scan: 10.0.0.14 — up (0.47ms)','22/tcp  open  ssh    OpenSSH 8.9p1','80/tcp  open  http   nginx 1.24.0','OS: Linux 5.15 (Ubuntu 22.04)']},
+  {cmd:'python3 cve_scanner.py --subnet 172.16.0.0/24',out:['[*] CVE db: 47,294 entries loaded','[+] 172.16.0.14 — CVE-2023-44487 CRIT 9.8','[+] 172.16.0.31 — CVE-2023-4863  HIGH 8.8','[!] 2 hosts vulnerable. Patching required.']},
+  {cmd:"curl -s https://threat-intel.io/v2/ip/185.93.1.22 | jq",out:['{ "ip": "185.93.1.22",','  "country": "RU", "asn": "AS197695",','  "threat_score": 87,','  "tags": ["c2-server","botnet","scanner"] }']},
+  {cmd:'tcpdump -i eth0 -nn host 185.93.1.22',out:['tcpdump: listening on eth0','18:42:31 192.168.1.5.52412 > 185.93.1.22.443 [S]','18:42:31 185.93.1.22.443 > 192.168.1.5.52412 [S.]','3 packets captured']},
+  {cmd:'hashcat -m 1800 -a 0 hashes.txt rockyou.txt',out:['Device: NVIDIA RTX 4090 — 182.4 MH/s','[CRACKED] $6$kH9... → monkey_d_1990','[CRACKED] $6$mP7... → sunshine123!','Recovered: 2/5 digests']},
+  {cmd:'ssh -i ~/.ssh/id_ed25519 root@172.16.0.14',out:['Welcome to Ubuntu 22.04.3 LTS','[+] SUID binaries: 23 found','[!] Writable /etc/cron.d — persistence vector','root@target-14:~#']},
+  {cmd:'traceroute -I -m 20 8.8.8.8',out:[' 1  192.168.1.1         0.4ms',' 2  10.20.0.1           1.2ms',' 3  84.16.8.1           8.4ms',' 5  142.250.225.190    17.8ms',' 6  dns.google          18.1ms']},
+  {cmd:'volatility3 -f mem.raw windows.pslist',out:['PID 4     System       86 threads','PID 392   smss.exe     2 threads','[!] PID 3912 — lsass_backup.exe (suspicious)','[!] PID 4418 — hidden process (hollowing)','[+] Dumping to ./dump/']},
+];
+let tlcnt=0;
+function addTLine(txt,cls='to'){ const d=document.createElement('div'); d.className=cls; d.textContent=txt; tb.appendChild(d); tlcnt++; while(tlcnt>26){tb.removeChild(tb.firstChild);tlcnt--;} tb.scrollTop=tb.scrollHeight; }
+async function termLoop(){
+  addTLine('NEXUS SENTINEL v3.0 — Operative Shell','ti');
+  addTLine('auth: ed25519 keypair verified  ✓','to'); addTLine('','to'); tlcnt++;
+  while(true){
+    await sleep(rand(800,2200));
+    const e=pick(CMDS);
+    const row=document.createElement('div'); row.className='tc';
+    row.innerHTML='<span style="color:#ffb300">root@nexus-07</span><span style="color:#004a10">:~# </span>';
+    const typed=document.createElement('span');
+    const cur=document.createElement('span');
+    cur.style.cssText='display:inline-block;width:7px;height:10px;background:#00ff41;vertical-align:middle;animation:blink .7s step-end infinite';
+    row.appendChild(typed); row.appendChild(cur); tb.appendChild(row); tlcnt++;
+    while(tlcnt>26){tb.removeChild(tb.firstChild);tlcnt--;} tb.scrollTop=tb.scrollHeight;
+    for(const ch of e.cmd){ typed.textContent+=ch; tb.scrollTop=tb.scrollHeight; await sleep(rand(30,90)); }
+    cur.remove(); await sleep(rand(150,400));
+    for(const ln of e.out){ const cls=ln.startsWith('[!')?'te':ln.startsWith('[+')?'ti':'to'; addTLine(ln,cls); await sleep(rand(70,240)); }
+  }
+}
+termLoop();
+
+// ═══ P4 — RADAR + THREAT LOG ════════════════════════════════
+const rc=$('rc'), rctx=rc.getContext('2d');
+function setupRadar(){ const p=rc.parentElement.parentElement; const sz=Math.min(p.clientWidth*.42,p.clientHeight*.46,160); rc.width=rc.height=Math.max(~~sz,80); }
+setupRadar();
+let rAngle=0, blips=[];
+const THREATS=[
+  ['[INFO]','i',['Port scan','DNS amplification','Traffic spike','Protocol mismatch','Geo-block bypass','Slowloris probe','SYN flood (low)']],
+  ['[WARN]','w',['SSH brute-force','C2 beacon','ARP spoofing','SSL strip attack','Credential stuffing','Port knocking','MITM attempt']],
+  ['[CRIT!]','c',['0-DAY EXPLOIT','ROOTKIT SIGNATURE','DATA EXFILTRATION','LATERAL MOVEMENT','KERNEL EXPLOIT','PROCESS INJECTION']],
+];
+const tlog=$('tlog');
+function addThreat(){
+  const[lvl,cls,msgs]=pick(THREATS);
+  const d=document.createElement('div'); d.className='thr';
+  d.innerHTML=`<span class="thr-t">${ts()}</span><span class="thr-l ${cls}">${lvl}</span><span class="thr-m">${pick(msgs)}</span>`;
+  tlog.appendChild(d); while(tlog.children.length>8)tlog.removeChild(tlog.firstChild);
+  if(cls==='c'){totThr++; $('hthr').textContent=totThr;}
+  blips.push({a:rf(0,Math.PI*2),d:rf(.2,.9),age:0,lvl:['i','w','c'].indexOf(cls)});
+  if(blips.length>12)blips.shift();
+}
+(function tLoop(){ addThreat(); setTimeout(tLoop,rand(1600,3600)); })();
+setTimeout(addThreat,700); setTimeout(addThreat,1800);
+function drawRadar(){
+  const c=rc.width/2,r=c*.88,w=rc.width,h=rc.height;
+  rctx.fillStyle='#030803'; rctx.fillRect(0,0,w,h);
+  [.25,.5,.75,1].forEach(f=>{ rctx.beginPath(); rctx.arc(c,c,r*f,0,Math.PI*2); rctx.strokeStyle='#0a1f0a'; rctx.lineWidth=.8; rctx.stroke(); });
+  [[c,c-r,c,c+r],[c-r,c,c+r,c]].forEach(([x1,y1,x2,y2])=>{ rctx.beginPath(); rctx.moveTo(x1,y1); rctx.lineTo(x2,y2); rctx.strokeStyle='#0a1f0a'; rctx.lineWidth=.5; rctx.stroke(); });
+  const d45=r*.707;
+  [[c-d45,c-d45,c+d45,c+d45],[c+d45,c-d45,c-d45,c+d45]].forEach(([x1,y1,x2,y2])=>{ rctx.beginPath(); rctx.moveTo(x1,y1); rctx.lineTo(x2,y2); rctx.strokeStyle='#0a1f0a'; rctx.lineWidth=.5; rctx.stroke(); });
+  for(let i=32;i>=0;i--){ const a=rAngle-i*.05; rctx.beginPath(); rctx.moveTo(c,c); rctx.arc(c,c,r,a,a+.05); rctx.closePath(); rctx.fillStyle=`rgba(0,255,65,${(1-i/32)*.22})`; rctx.fill(); }
+  rctx.save(); rctx.shadowColor='#00ff41'; rctx.shadowBlur=10;
+  rctx.beginPath(); rctx.moveTo(c,c); rctx.lineTo(c+Math.cos(rAngle)*r,c+Math.sin(rAngle)*r);
+  rctx.strokeStyle='#00ff41'; rctx.lineWidth=1.8; rctx.stroke(); rctx.restore();
+  blips.forEach(b=>{ b.age++; const bx=c+Math.cos(b.a)*r*b.d,by=c+Math.sin(b.a)*r*b.d; const al=Math.max(0,1-b.age/110); const col=['#00eeff','#ffb300','#ff2222'][b.lvl]; const rp=(b.age%40)/40; rctx.beginPath(); rctx.arc(bx,by,rp*12,0,Math.PI*2); rctx.strokeStyle=col+Math.floor((1-rp)*al*180).toString(16).padStart(2,'0'); rctx.lineWidth=1; rctx.stroke(); rctx.beginPath(); rctx.arc(bx,by,3,0,Math.PI*2); rctx.fillStyle=col+Math.floor(al*255).toString(16).padStart(2,'0'); rctx.fill(); });
+  rctx.beginPath(); rctx.arc(c,c,r,0,Math.PI*2); rctx.strokeStyle='#009922'; rctx.lineWidth=1.5; rctx.stroke();
+  const fs=Math.max(7,c*.11);
+  rctx.fillStyle='#004a10'; rctx.font=`${fs}px Share Tech Mono,monospace`;
+  rctx.textAlign='center'; rctx.fillText('N',c,fs+1); rctx.fillText('S',c,h-1);
+  rctx.textAlign='left'; rctx.fillText('E',w-fs-2,c+fs/3); rctx.fillText('W',2,c+fs/3);
+  rctx.textAlign='start';
+  rAngle+=.025; if(rAngle>Math.PI*2)rAngle-=Math.PI*2;
+}
+(function radarLoop(){ drawRadar(); requestAnimationFrame(radarLoop); })();
+
+// ═══ P5 — HEX DUMP ════════════════════════════════════════════
+const hxlines=$('hxlines');
+
+// Simulated packet payload templates
+const PAYLOADS=[
+  // TLS ClientHello
+  ()=>{ const b=[0x16,0x03,0x03,0x00,0xF1,0x01,0x00,0x00,0xED,0x03,0x03,...Array.from({length:32},()=>rand(0,255)),0x00,0x20,...Array.from({length:32},()=>rand(0,255)),0x00,0x26,0xC0,0x2C,0xC0,0x2B,0xC0,0x30,0xC0,0x2F,0xC0,0x24,0xC0,0x23,0xC0,0x0A,0xC0,0x09,0x00,0x9D,0x00,0x9C,0x00,0x3D,0x00,0x3C,0x00,0x35,0x00,0x2F,0x01,0x00]; return {label:'TLS 1.3 ClientHello',bytes:b}; },
+  // HTTP GET
+  ()=>{ const path=pick(['/api/v2/users','/admin/login','/wp-admin/','/etc/passwd','/shell.php']); const s=`GET ${path} HTTP/1.1\r\nHost: 185.93.1.22\r\nUser-Agent: Mozilla/5.0\r\nAccept: */*\r\nConnection: keep-alive\r\n\r\n`; return {label:`HTTP GET ${path}`,bytes:[...s].map(c=>c.charCodeAt(0))}; },
+  // SSH handshake
+  ()=>{ const b=[0x00,0x00,0x04,0xEC,0x06,0x14,...Array.from({length:16},()=>rand(0,255)),0x00,0x00,0x01,0x04,'S'.charCodeAt(0),'S'.charCodeAt(0),'H'.charCodeAt(0),'-'.charCodeAt(0),'2'.charCodeAt(0),'.'.charCodeAt(0),'0'.charCodeAt(0),'-'.charCodeAt(0),'O'.charCodeAt(0),'p'.charCodeAt(0),'e'.charCodeAt(0),'n'.charCodeAt(0),'S'.charCodeAt(0),'S'.charCodeAt(0),'H'.charCodeAt(0),'_'.charCodeAt(0),'8'.charCodeAt(0),'.'.charCodeAt(0),'9'.charCodeAt(0),...Array.from({length:32},()=>rand(0,255))]; return {label:'SSH-2.0 Protocol Exchange',bytes:b}; },
+  // DNS query
+  ()=>{ const domains=['\x06google\x03com\x00','\x09microsoft\x03com\x00','\x07command\x07control\x03net\x00']; const dom=pick(domains); const b=[rand(0,255),rand(0,255),0x01,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00,...[...dom].map(c=>c.charCodeAt(0)),0x00,0x01,0x00,0x01]; return {label:'DNS Query A Record',bytes:b}; },
+  // Raw shellcode-like
+  ()=>{ const b=[0x55,0x48,0x89,0xE5,0x48,0x83,0xEC,0x10,0x48,0x8D,0x05,0x3B,0x00,0x00,0x00,0xBF,0x01,0x00,0x00,0x00,0x48,0x89,0xC6,0xE8,0xFF,0xD0,0x90,0x90,0xCC,0xEB,0xFE,...Array.from({length:32},()=>rand(0,255))]; return {label:'x86-64 Shellcode Stub',bytes:b}; },
+  // Beacon C2
+  ()=>{ const b=[0x4D,0x5A,rand(0,255),rand(0,255),0x00,0x00,0x00,0x00,0x04,0x00,...Array.from({length:6},()=>rand(0,255)),0x40,0x00,...Array.from({length:32},()=>rand(0,255))]; return {label:'C2 Beacon Payload (MZ)',bytes:b}; },
+];
+
+let hxCurrent=null, hxPaused=false;
+function renderHex(payload){
+  const bytes=payload.bytes.slice(0,128);
+  hxlines.innerHTML='';
+  const labelEl=document.createElement('div');
+  labelEl.className='hx-label';
+  labelEl.innerHTML=`<span style="color:#005512">SOURCE: </span><span style="color:#009922">${payload.label}</span><span style="color:#003d0c;float:right">${bytes.length} bytes</span>`;
+  hxlines.appendChild(labelEl);
+  const rows=Math.ceil(bytes.length/16);
+  for(let r=0;r<rows;r++){
+    const chunk=bytes.slice(r*16,(r+1)*16);
+    const hexParts=[];
+    const ascParts=[];
+    for(let i=0;i<16;i++){
+      if(i<chunk.length){
+        hexParts.push(h2(chunk[i]));
+        const ch=chunk[i];
+        ascParts.push(ch>=0x20&&ch<0x7F?String.fromCharCode(ch):'·');
+      } else { hexParts.push('  '); ascParts.push(' '); }
+      if(i===7)hexParts.push('');
+    }
+    const div=document.createElement('div'); div.className='hxr';
+    div.innerHTML=`<span class="hxr-off">${h2(r*16>>8)}${h2((r*16)&0xFF)}</span><span class="hxr-hex">${hexParts.join(' ')}</span><span class="hxr-asc">${ascParts.join('')}</span>`;
+    hxlines.appendChild(div);
+  }
+}
+
+async function hexLoop(){
+  while(true){
+    const p=pick(PAYLOADS)();
+    hxCurrent=p;
+    renderHex(p);
+    await sleep(rand(2200,4500));
+    // Animate a few bytes changing (simulating live capture)
+    const mutSteps=rand(2,5);
+    for(let s=0;s<mutSteps;s++){
+      await sleep(rand(300,700));
+      const idx=rand(10,p.bytes.length-1);
+      p.bytes[idx]=rand(0,255);
+      renderHex(p);
+    }
+  }
+}
+hexLoop();
+
+// ═══ P6 — BANDWIDTH MONITOR ════════════════════════════════
+const bwc=$('bwc'), bwctx=bwc.getContext('2d');
+function resizeBwc(){ const p=bwc.parentElement; bwc.width=p.clientWidth; bwc.height=p.clientHeight; }
+resizeBwc();
+
+const BW_POINTS=120;
+let rxData=Array(BW_POINTS).fill(0);
+let txData=Array(BW_POINTS).fill(0);
+let rxBase=rf(5,15), txBase=rf(2,8);
+let totalBytes=0;
+
+// Simulate realistic bandwidth with spikes
+function nextBw(base, prev){
+  const spike=Math.random()<.06?rf(3,8):1;
+  const v=base*spike + rf(-.5,.5)*base*.4 + prev*.3;
+  return Math.max(.1,Math.min(100,v));
+}
+
+let bwTick=0;
+setInterval(()=>{
+  const rx=nextBw(rxBase,rxData[rxData.length-1]);
+  const tx=nextBw(txBase,txData[txData.length-1]);
+  rxData.push(rx); if(rxData.length>BW_POINTS)rxData.shift();
+  txData.push(tx); if(txData.length>BW_POINTS)txData.shift();
+  totalBytes+=rx+tx;
+  $('brx').textContent=rx.toFixed(1)+' MB/s';
+  $('btx').textContent=tx.toFixed(1)+' MB/s';
+  $('btot').textContent=(totalBytes/1024).toFixed(2)+' GB';
+  // Occasionally shift base values
+  bwTick++;
+  if(bwTick%30===0){ rxBase=rf(3,20); txBase=rf(1,10); }
+},500);
+
+function drawBw(){
+  const w=bwc.width,h=bwc.height;
+  if(!w||!h){ requestAnimationFrame(drawBw); return; }
+  bwctx.fillStyle='#030a03'; bwctx.fillRect(0,0,w,h);
+
+  // Grid
+  const gridY=4;
+  bwctx.strokeStyle='#091409'; bwctx.lineWidth=.5;
+  for(let i=0;i<=gridY;i++){
+    const y=h*(i/gridY);
+    bwctx.beginPath(); bwctx.moveTo(0,y); bwctx.lineTo(w,y); bwctx.stroke();
+  }
+  for(let i=0;i<6;i++){
+    const x=w*(i/6);
+    bwctx.beginPath(); bwctx.moveTo(x,0); bwctx.lineTo(x,h); bwctx.stroke();
+  }
+
+  // Y axis labels
+  const maxVal=Math.max(30, ...rxData, ...txData)*1.15;
+  for(let i=0;i<=gridY;i++){
+    const v=maxVal*(1-i/gridY);
+    const y=h*(i/gridY);
+    bwctx.fillStyle='#003d0c'; bwctx.font='8px Share Tech Mono,monospace';
+    bwctx.textAlign='left'; bwctx.fillText(v.toFixed(0),2,y+8);
+  }
+  bwctx.fillStyle='#003d0c'; bwctx.font='8px Share Tech Mono,monospace';
+  bwctx.textAlign='left'; bwctx.fillText('MB/s',2,h-2);
+
+  const drawLine=(data,color,fill)=>{
+    const pts=data.length;
+    bwctx.beginPath();
+    data.forEach((v,i)=>{
+      const x=i/(pts-1)*w;
+      const y=h-(v/maxVal)*(h-12)-2;
+      i===0?bwctx.moveTo(x,y):bwctx.lineTo(x,y);
+    });
+    if(fill){
+      bwctx.lineTo(w,h); bwctx.lineTo(0,h); bwctx.closePath();
+      bwctx.fillStyle=fill; bwctx.fill();
+    }
+    bwctx.strokeStyle=color; bwctx.lineWidth=1.5;
+    bwctx.beginPath();
+    data.forEach((v,i)=>{ const x=i/(pts-1)*w; const y=h-(v/maxVal)*(h-12)-2; i===0?bwctx.moveTo(x,y):bwctx.lineTo(x,y); });
+    bwctx.stroke();
+  };
+
+  drawLine(rxData,'#00ff41','rgba(0,255,65,0.06)');
+  drawLine(txData,'#00eeff','rgba(0,238,255,0.05)');
+
+  // Current value indicators (right edge dots)
+  const rxLast=rxData[rxData.length-1], txLast=txData[txData.length-1];
+  const rxY=h-(rxLast/maxVal)*(h-12)-2;
+  const txY=h-(txLast/maxVal)*(h-12)-2;
+  bwctx.beginPath(); bwctx.arc(w-2,rxY,3,0,Math.PI*2); bwctx.fillStyle='#00ff41'; bwctx.fill();
+  bwctx.beginPath(); bwctx.arc(w-2,txY,3,0,Math.PI*2); bwctx.fillStyle='#00eeff'; bwctx.fill();
+
+  requestAnimationFrame(drawBw);
+}
+drawBw();
+
+window.addEventListener('resize',()=>{ resizeMc(); setupProjection(); setupRadar(); resizeBwc(); });
+</script>
+</body>
+</html>
