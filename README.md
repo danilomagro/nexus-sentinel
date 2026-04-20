@@ -33,7 +33,7 @@ Six live panels, all animated, all running in your browser:
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/nexus-sentinel.git
+git clone https://github.com/danilomagro/nexus-sentinel.git
 cd nexus-sentinel
 
 # Open directly in your browser — no server needed
