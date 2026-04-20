@@ -10,7 +10,7 @@ A fully animated, single-file **cybersecurity operations dashboard** — designe
 
 ## Live Demo
 
-**[→ Open in browser](https://yourusername.github.io/nexus-sentinel/)**
+**[→ Open in browser](https://danilomagro.github.io/nexus-sentinel/)**
 
 ---
 
@@ -69,7 +69,7 @@ Or just download `index.html` and double-click it.
 
 ## The making of
 
-This project was **conceived and directed by [Danilo](https://linkedin.com/in/yourprofile)** as part of an exploration into AI-assisted development and prompt engineering.
+This project was **conceived and directed by [Danilo Magro](https://www.linkedin.com/in/danilo-magro/)** as part of an exploration into AI-assisted development and prompt engineering.
 
 The entire codebase was written by **[Claude](https://claude.ai)** (Anthropic's AI) through an iterative conversation — from initial concept to six-panel layout, real geodata integration, hex dump simulation, and hop-chaining traceroute logic.
 
