@@ -4,6 +4,8 @@
 
 A fully animated, single-file **cybersecurity operations dashboard** — designed to look like a real-time threat monitoring console straight out of a hacker movie. No backend, no dependencies to install, no build step. Just open `index.html`.
 
+> ⚠️ **All data is simulated.** No real network traffic is captured or analyzed — everything is procedurally generated for visual effect only.
+
 ![NEXUS SENTINEL dashboard preview](preview.png)
 
 ---
